@@ -61,7 +61,7 @@ download_files() {
     local beta_tag="/tmp/xkeen_beta"
     trap "rm -f $beta_tag" EXIT
     (curl -s "$GITHUB_API_RELEASES_URL" | \
-  jq -re '.[0] | select(.prerelease == true) | .tag_name' > $beta_tag) &
+  jq -re 'map(select(.prerelease == true)) | sort_by(.published_at // .created_at // .updated_at) | reverse | .[0].tag_name' > $beta_tag) &
     if ! spinner $! "Поиск бета-релиза..."; then
       printf "${RED_BOLD}\n Нет актуального бета-релиза${NCN}"
       $XKEENUI_INIT start &>/dev/null || :
