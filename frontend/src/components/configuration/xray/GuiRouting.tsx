@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { IconCheck, IconGripVertical, IconPencil, IconPlus, IconX } from '@tabler/icons-react'
 import { forwardRef, memo, useCallback, useEffect, useRef, useState } from 'react'
 import { apiCall } from '../../../lib/api'
+import { formatConfigApplyError, getConfigApplyStatus } from '../../../lib/configApply'
 import { useAppActions, useCoreRuntimeState, useSettings } from '../../../lib/store'
 import type { Config } from '../../../lib/types'
 import { cn, stripJsonComments } from '../../../lib/utils'
@@ -80,7 +81,7 @@ interface Props {
 
 export function GuiRouting({ editorRef, configs, activeConfigIndex }: Props) {
   const { showToast, dispatch } = useAppActions()
-  const { serviceStatus, currentCore } = useCoreRuntimeState()
+  const { serviceStatus } = useCoreRuntimeState()
   const autoApply = useSettings((s) => s.autoApply)
   const [rules, setRules] = useState<Rule[]>([])
   const [available, setAvailable] = useState<AvailableTags>({
@@ -92,7 +93,6 @@ export function GuiRouting({ editorRef, configs, activeConfigIndex }: Props) {
   const activeConfigIndexRef = useRef(activeConfigIndex)
   const autoApplyRef = useRef(autoApply)
   const serviceStatusRef = useRef(serviceStatus)
-  const currentCoreRef = useRef(currentCore)
   const rulesRef = useRef<Rule[]>([])
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
   const cardRefHandlersRef = useRef<Record<number, (el: HTMLDivElement | null) => void>>({})
@@ -165,8 +165,7 @@ export function GuiRouting({ editorRef, configs, activeConfigIndex }: Props) {
 
   useEffect(() => {
     serviceStatusRef.current = serviceStatus
-    currentCoreRef.current = currentCore
-  }, [serviceStatus, currentCore])
+  }, [serviceStatus])
 
   const syncToEditor = useCallback(
     async (newRules: Rule[], triggerSoftRestart = false) => {
@@ -183,29 +182,36 @@ export function GuiRouting({ editorRef, configs, activeConfigIndex }: Props) {
           const activeConfig = configsRef.current[activeIndex]
           if (activeConfig) {
             const content = wrapper.getValue()
-            await apiCall<any>('PUT', 'configs', {
-              file: activeConfig.file,
-              content,
-            })
-            dispatch({
-              type: 'SAVE_CONFIG',
-              index: activeIndex,
-              content,
-            })
             dispatch({
               type: 'SET_SERVICE_STATUS',
               status: 'pending',
               pendingText: 'Перезапуск...',
             })
-            const r = await apiCall<any>('POST', 'control', {
-              action: 'softRestart',
-              core: currentCoreRef.current,
+            const result = await apiCall<{
+              success: boolean
+              error?: string
+              rollbackPerformed?: boolean
+              stage?: string
+            }>('PUT', 'configs', {
+              file: activeConfig.file,
+              content,
+              apply: true,
             })
-            showToast(r?.success ? 'Изменения применены' : `Ошибка: ${r?.error}`, r?.success ? 'success' : 'error')
-            dispatch({ type: 'SET_SERVICE_STATUS', status: 'running' })
+            dispatch({ type: 'SET_SERVICE_STATUS', status: getConfigApplyStatus(result) })
+            if (!result.success) {
+              showToast(formatConfigApplyError(result), 'error')
+              return
+            }
+            dispatch({
+              type: 'SAVE_CONFIG',
+              index: activeIndex,
+              content,
+            })
+            showToast('Изменения применены', 'success')
           }
         }
       } catch (e: any) {
+        dispatch({ type: 'SET_SERVICE_STATUS', status: 'running' })
         showToast(`Ошибка синхронизации: ${e.message}`, 'error')
       }
     },

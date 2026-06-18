@@ -36,6 +36,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import { apiCall, clashFetch, getFileLanguage } from '../../lib/api'
 import { LazyBoundary, lazyLoad, useLazyMount } from '../../lib/loader'
+import { formatConfigApplyError, getConfigApplyStatus } from '../../lib/configApply'
 import { syncClashApiPort, useAppContext, useConnectionsSync, useModalContext, useSettings } from '../../lib/store'
 import type { Config } from '../../lib/types'
 import { cn, stripJsonComments } from '../../lib/utils'
@@ -529,11 +530,8 @@ export function ConfigPanel({ onOpenImport, onOpenTemplate, onOpenGeoScan, onRef
         stage?: string
       }>('PUT', 'configs', { file: cfg.file, content, apply: true })
       if (!saveResult.success) {
-        const errorText = saveResult.rollbackPerformed
-          ? `Ошибка применения (${saveResult.stage ?? 'rollback'}): ${saveResult.error}`
-          : `Ошибка применения (${saveResult.stage ?? 'unknown'}): ${saveResult.error}`
-        dispatch({ type: 'SET_SERVICE_STATUS', status: saveResult.rollbackPerformed ? 'running' : 'stopped' })
-        return showToast(errorText, 'error')
+        dispatch({ type: 'SET_SERVICE_STATUS', status: getConfigApplyStatus(saveResult) })
+        return showToast(formatConfigApplyError(saveResult), 'error')
       }
 
       editorRef.current.setSavedContent(content)
@@ -543,7 +541,7 @@ export function ConfigPanel({ onOpenImport, onOpenTemplate, onOpenGeoScan, onRef
       dispatch({ type: 'SET_SERVICE_STATUS', status: 'running' })
       syncClashApiPort(200)
     } catch (e: any) {
-      dispatch({ type: 'SET_SERVICE_STATUS', status: 'stopped' })
+      dispatch({ type: 'SET_SERVICE_STATUS', status: 'running' })
       showToast(`Ошибка применения: ${e.message}`, 'error')
     }
   }

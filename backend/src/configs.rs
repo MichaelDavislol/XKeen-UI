@@ -45,12 +45,7 @@ async fn collect_configs(paths: &[String], is_mihomo: bool) -> Vec<ConfigItem> {
                 Ok(mut entries) => {
                     while let Ok(Some(entry)) = entries.next_entry().await {
                         let entry_path = entry.path();
-                        let matches = if is_mihomo {
-                            entry_path.extension().map_or(false, |e| e == "yaml" || e == "yml")
-                        } else {
-                            entry_path.extension().map_or(false, |e| e == "json")
-                        };
-                        if matches {
+                        if file_matches_core_config(&entry_path, is_mihomo) {
                             match tokio::fs::read_to_string(&entry_path).await {
                                 Ok(content) => results.push(ConfigItem {
                                     file: entry_path.to_string_lossy().into(),
@@ -208,6 +203,16 @@ fn normalize_content(file: &str, content: String) -> String {
     }
 }
 
+fn file_matches_core_config(path: &Path, is_mihomo: bool) -> bool {
+    path.extension().is_some_and(|ext| {
+        if is_mihomo {
+            ext == "yaml" || ext == "yml"
+        } else {
+            ext == "json"
+        }
+    })
+}
+
 fn safe_apply_response(
     success: bool, stage: &str, error: Option<String>, applied: bool, rollback_performed: bool, validate_only: bool,
 ) -> Json<ApiResponse<SafeApplyData>> {
@@ -265,30 +270,40 @@ async fn copy_file_to_stage(source: &Path, stage_root: &Path) -> Result<(), Stri
     Ok(())
 }
 
+async fn copy_directory_tree_to_stage(source: &Path, is_mihomo: bool, stage_root: &Path) -> Result<(), String> {
+    let mut stack = vec![source.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut entries = tokio::fs::read_dir(&dir)
+            .await
+            .map_err(|e| format!("Не удалось открыть {}: {}", dir.display(), e))?;
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| format!("Не удалось прочитать {}: {}", dir.display(), e))?
+        {
+            let path = entry.path();
+            let metadata = entry
+                .metadata()
+                .await
+                .map_err(|e| format!("Не удалось получить метаданные {}: {}", path.display(), e))?;
+            if metadata.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if metadata.is_file() && file_matches_core_config(&path, is_mihomo) {
+                copy_file_to_stage(&path, stage_root).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn copy_path_to_stage(source: &Path, is_mihomo: bool, stage_root: &Path) -> Result<(), String> {
     if !source.exists() {
         return Ok(());
     }
     if source.is_dir() {
-        let mut entries = tokio::fs::read_dir(source)
-            .await
-            .map_err(|e| format!("Не удалось открыть {}: {}", source.display(), e))?;
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|e| format!("Не удалось прочитать {}: {}", source.display(), e))?
-        {
-            let path = entry.path();
-            let matches = if is_mihomo {
-                path.extension().map_or(false, |e| e == "yaml" || e == "yml")
-            } else {
-                path.extension().map_or(false, |e| e == "json")
-            };
-            if matches {
-                copy_file_to_stage(&path, stage_root).await?;
-            }
-        }
-        return Ok(());
+        return copy_directory_tree_to_stage(source, is_mihomo, stage_root).await;
     }
     copy_file_to_stage(source, stage_root).await
 }
@@ -679,5 +694,30 @@ mod tests {
             stage_mirror_path(stage, original).unwrap(),
             PathBuf::from("/tmp/stage-root/opt/etc/mihomo/config.yaml")
         );
+    }
+
+    #[tokio::test]
+    async fn copy_path_to_stage_recurses_into_nested_directories() {
+        let root = Path::new("/tmp").join(format!("xkeen-ui-stage-test-{}", std::process::id()));
+        let source = root.join("source");
+        let nested = source.join("nested");
+        let stage = root.join("stage");
+        tokio::fs::create_dir_all(&nested).await.unwrap();
+        tokio::fs::create_dir_all(&stage).await.unwrap();
+
+        let nested_file = nested.join("config.json");
+        let skipped_file = nested.join("notes.txt");
+        tokio::fs::write(&nested_file, b"{}").await.unwrap();
+        tokio::fs::write(&skipped_file, b"ignore").await.unwrap();
+
+        copy_path_to_stage(&source, false, &stage).await.unwrap();
+
+        let expected_nested_file = stage_mirror_path(&stage, &nested_file).unwrap();
+        let expected_skipped_file = stage_mirror_path(&stage, &skipped_file).unwrap();
+
+        assert!(expected_nested_file.exists());
+        assert!(!expected_skipped_file.exists());
+
+        let _ = tokio::fs::remove_dir_all(&root).await;
     }
 }

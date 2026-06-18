@@ -1,6 +1,7 @@
 import { Switch } from '@/components/ui/switch'
 import { useCallback, useState } from 'react'
 import { apiCall } from '../../../lib/api'
+import { formatConfigApplyError, getConfigApplyStatus } from '../../../lib/configApply'
 import { useAppActions, useCoreRuntimeState, useSettings } from '../../../lib/store'
 import type { Config } from '../../../lib/types'
 import { cn, stripJsonComments } from '../../../lib/utils'
@@ -50,7 +51,7 @@ interface Props {
 
 export function GuiLog({ editorRef, configs, activeConfigIndex }: Props) {
   const { showToast, dispatch } = useAppActions()
-  const { serviceStatus, currentCore } = useCoreRuntimeState()
+  const { serviceStatus } = useCoreRuntimeState()
   const autoApply = useSettings((s) => s.autoApply)
   const [cfg, setCfg] = useState<LogConfig>(() => {
     const content = configs[activeConfigIndex]?.content ?? ''
@@ -108,30 +109,36 @@ export function GuiLog({ editorRef, configs, activeConfigIndex }: Props) {
           const activeConfig = configs[activeConfigIndex]
           if (activeConfig) {
             const content = wrapper.getValue()
-            await apiCall<{ success: boolean; error?: string }>('PUT', 'configs', { file: activeConfig.file, content })
-            dispatch({
-              type: 'SAVE_CONFIG',
-              index: activeConfigIndex,
-              content,
-            })
             dispatch({
               type: 'SET_SERVICE_STATUS',
               status: 'pending',
               pendingText: 'Перезапуск...',
             })
-            const r = await apiCall<{ success: boolean; error?: string }>('POST', 'control', {
-              action: 'softRestart',
-              core: currentCore,
+            const result = await apiCall<{
+              success: boolean
+              error?: string
+              rollbackPerformed?: boolean
+              stage?: string
+            }>('PUT', 'configs', { file: activeConfig.file, content, apply: true })
+            dispatch({ type: 'SET_SERVICE_STATUS', status: getConfigApplyStatus(result) })
+            if (!result.success) {
+              showToast(formatConfigApplyError(result), 'error')
+              return
+            }
+            dispatch({
+              type: 'SAVE_CONFIG',
+              index: activeConfigIndex,
+              content,
             })
-            showToast(r?.success ? 'Изменения применены' : `Ошибка: ${r?.error}`, r?.success ? 'success' : 'error')
-            dispatch({ type: 'SET_SERVICE_STATUS', status: 'running' })
+            showToast('Изменения применены', 'success')
           }
         }
       } catch (e: any) {
+        dispatch({ type: 'SET_SERVICE_STATUS', status: 'running' })
         showToast(`Ошибка синхронизации: ${e.message}`, 'error')
       }
     },
-    [editorRef, showToast, autoApply, serviceStatus, currentCore, configs, activeConfigIndex, dispatch]
+    [editorRef, showToast, autoApply, serviceStatus, configs, activeConfigIndex, dispatch]
   )
 
   function update(partial: Partial<LogConfig>, triggerRestart = false) {
