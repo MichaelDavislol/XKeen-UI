@@ -9,13 +9,13 @@
 Стабильная версия:
 
 ```sh
-curl https://raw.githubusercontent.com/zxc-rv/XKeen-UI/main/setup.sh | sh
+curl https://raw.githubusercontent.com/MichaelDavislol/XKeen-UI/main/setup.sh | sh
 ```
 
 Бета:
 
 ```sh
-curl https://raw.githubusercontent.com/zxc-rv/XKeen-UI/main/setup.sh | sh -s -- beta
+curl https://raw.githubusercontent.com/MichaelDavislol/XKeen-UI/main/setup.sh | sh -s -- beta
 ```
 
 Скрипт интерактивный, предлагает меню:

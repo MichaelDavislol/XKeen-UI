@@ -6,6 +6,11 @@ on:
         description: "Release version (e.g. v1.0.0)"
         required: true
         type: string
+      prerelease:
+        description: "Publish as beta/prerelease"
+        required: true
+        default: true
+        type: boolean
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -120,6 +125,8 @@ jobs:
           path: artifacts
       - uses: softprops/action-gh-release@v3
         with:
+          repository: ${{ github.repository }}
           tag_name: ${{ inputs.version }}
-          prerelease: true
+          name: ${{ inputs.prerelease && format('Beta {0}', inputs.version) || inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
           files: artifacts/xkeen-ui-*/*

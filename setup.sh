@@ -20,6 +20,9 @@ STATIC_DIR="/opt/share/www/XKeen-UI"
 LIGHTTPD_INIT="/opt/etc/init.d/S80lighttpd"
 LIGHTTPD_DIR="/opt/etc/lighttpd"
 LIGHTTPD_CONF="$LIGHTTPD_DIR/conf.d/90-xkeenui.conf"
+GITHUB_REPO="${XKEENUI_REPO:-MichaelDavislol/XKeen-UI}"
+GITHUB_RELEASES_URL="https://github.com/$GITHUB_REPO/releases"
+GITHUB_API_RELEASES_URL="https://api.github.com/repos/$GITHUB_REPO/releases"
 
 BETA=false
 LOCAL=false
@@ -50,14 +53,14 @@ get_arch() {
 }
 
 download_files() {
-  local base_url="https://github.com/zxc-rv/XKeen-UI/releases"
+  local base_url="$GITHUB_RELEASES_URL"
   local download_url="$base_url/latest/download"
   local bin_name="xkeen-ui-$ARCH"
 
   if [ "$BETA" = true ]; then
     local beta_tag="/tmp/xkeen_beta"
     trap "rm -f $beta_tag" EXIT
-    (curl -s https://api.github.com/repos/zxc-rv/XKeen-UI/releases | \
+    (curl -s "$GITHUB_API_RELEASES_URL" | \
   jq -re '.[0] | select(.prerelease == true) | .tag_name' > $beta_tag) &
     if ! spinner $! "Поиск бета-релиза..."; then
       printf "${RED_BOLD}\n Нет актуального бета-релиза${NCN}"

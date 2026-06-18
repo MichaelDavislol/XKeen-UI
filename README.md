@@ -38,13 +38,13 @@
 ### Cтабильная/Latest версия
 
 ```SH
-curl https://raw.githubusercontent.com/zxc-rv/XKeen-UI/main/setup.sh | sh
+curl https://raw.githubusercontent.com/MichaelDavislol/XKeen-UI/main/setup.sh | sh
 ```
 
 ### Бета/Pre-release версия
 
 ```SH
-curl https://raw.githubusercontent.com/zxc-rv/XKeen-UI/main/setup.sh | sh -s -- beta
+curl https://raw.githubusercontent.com/MichaelDavislol/XKeen-UI/main/setup.sh | sh -s -- beta
 ```
 
 <br>
